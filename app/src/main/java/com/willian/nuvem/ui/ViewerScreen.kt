@@ -530,12 +530,13 @@ private fun PdfContent(f: File) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // As páginas são desenhadas com um pouco mais de resolução para o zoom não ficar borrado.
         val widthPx = (with(LocalDensity.current) { maxWidth.roundToPx() } * 1.5f).toInt().coerceAtMost(1800)
+        val pageW = maxWidth
         Box(
             Modifier.fillMaxSize()
                 .pinchZoom { zoom = (zoom * it).coerceIn(1f, 3f) }
                 .horizontalScroll(rememberScrollState())
         ) {
-        LazyColumn(Modifier.width(maxWidth * zoom).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(Modifier.width(pageW * zoom).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(renderer.pageCount) { index ->
                 val bmp by produceState<Bitmap?>(null, index, widthPx) {
                     value = withContext(Dispatchers.Default) {
