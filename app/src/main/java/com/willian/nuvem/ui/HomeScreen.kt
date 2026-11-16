@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -88,6 +90,12 @@ fun HomeScreen(vm: AppViewModel, onAdd: (Provider) -> Unit) {
             TopAppBar(
                 title = { Text("Minhas nuvens", fontWeight = FontWeight.SemiBold) },
                 actions = {
+                    IconButton(onClick = { vm.toggleLock() }) {
+                        Icon(
+                            if (vm.lockOn) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                            contentDescription = "Bloqueio por digital ou senha"
+                        )
+                    }
                     IconButton(onClick = { vm.cycleTheme() }) {
                         Icon(
                             when (vm.themeMode) {

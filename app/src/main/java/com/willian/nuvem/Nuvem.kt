@@ -31,7 +31,11 @@ class NuvemApp : Application(), ImageLoaderFactory {
 
     /** Carregador de imagens das miniaturas (inclui quadro de vídeos do celular). */
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
-        .components { add(VideoFrameDecoder.Factory()) }
+        .components {
+            add(VideoFrameDecoder.Factory())
+            add(com.willian.nuvem.ui.CloudThumbKeyer())
+            add(com.willian.nuvem.ui.CloudThumbFetcher.Factory())
+        }
         .crossfade(true)
         .build()
 }

@@ -49,7 +49,8 @@ fun thumbModel(account: Account, f: CloudFile, px: Int): Any? {
     if (account.provider == Provider.LOCAL) {
         return if (kind == FileKind.IMAGE || kind == FileKind.VIDEO) File(f.id) else null
     }
-    val t = f.thumb ?: return null
+    val t = f.thumb
+        ?: return if (kind == FileKind.IMAGE && f.size in 1..12_000_000) CloudThumb(account, f) else null
     return if (account.provider == Provider.GOOGLE) t.replace(Regex("=s\\d+$"), "=s$px") else t
 }
 

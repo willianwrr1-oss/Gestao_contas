@@ -249,7 +249,7 @@ fun BrowserScreen(
                         Modifier.align(Alignment.Center),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    ctl.viewMode == ViewMode.LIST -> LazyColumn(Modifier.fillMaxSize()) {
+                    ctl.viewMode == ViewMode.LIST -> LazyColumn(Modifier.fillMaxSize(), state = ctl.listState) {
                         items(list, key = { it.id }) { f ->
                             FileRow(
                                 ctl.account, f,
@@ -263,6 +263,7 @@ fun BrowserScreen(
                     else -> LazyVerticalGrid(
                         columns = GridCells.Adaptive(ctl.viewMode.cell.dp),
                         modifier = Modifier.fillMaxSize(),
+                        state = ctl.gridState,
                         contentPadding = PaddingValues(8.dp, 4.dp, 8.dp, 96.dp)
                     ) {
                         gridItems(list, key = { it.id }) { f ->

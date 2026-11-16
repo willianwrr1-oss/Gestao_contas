@@ -106,6 +106,17 @@ class BrowserController(val account: Account, private val scope: CoroutineScope)
             return base.sortedWith(compareByDescending<CloudFile> { it.isFolder }.then(cmp))
         }
 
+    /** Posição da rolagem: fica guardada aqui para sobreviver à troca de tela (abrir arquivo e voltar). */
+    val listState = androidx.compose.foundation.lazy.LazyListState()
+    val gridState = androidx.compose.foundation.lazy.grid.LazyGridState()
+
+    private fun toTop() {
+        scope.launch {
+            listState.scrollToItem(0)
+            gridState.scrollToItem(0)
+        }
+    }
+
     fun load() {
         job?.cancel()
         job = scope.launch {
@@ -129,12 +140,14 @@ class BrowserController(val account: Account, private val scope: CoroutineScope)
     fun enter(f: CloudFile) {
         clearSearch()
         stack = stack + f
+        toTop()
         load()
     }
 
     fun goTo(depth: Int) {
         clearSearch()
         stack = stack.take(depth)
+        toTop()
         load()
     }
 
@@ -146,6 +159,7 @@ class BrowserController(val account: Account, private val scope: CoroutineScope)
         }
         if (stack.isEmpty()) return false
         stack = stack.dropLast(1)
+        toTop()
         load()
         return true
     }
@@ -271,12 +285,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         BrowserController(a, viewModelScope).also { it.onMessage = { m -> message = m } }
     }
 
+    fun replaceTop(s: Screen) {
+        nav[nav.lastIndex] = s
+    }
+
     fun push(s: Screen) {
         nav.add(s)
     }
 
     fun pop() {
         if (nav.size > 1) nav.removeAt(nav.lastIndex)
+    }
+
+    var lockOn by mutableStateOf(Nuvem.prefs.getBoolean("lock", true))
+        private set
+
+    fun toggleLock() {
+        lockOn = !lockOn
+        Nuvem.prefs.edit().putBoolean("lock", lockOn).apply()
+        message = if (lockOn) "Bloqueio por digital/senha ativado." else "Bloqueio por digital/senha desativado."
     }
 
     fun cycleTheme() {

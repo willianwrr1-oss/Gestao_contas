@@ -9,6 +9,10 @@ import android.os.ParcelFileDescriptor
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +35,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MusicNote
@@ -61,7 +67,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -114,7 +122,15 @@ private sealed interface LoadState {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ViewerScreen(account: Account, file: CloudFile, onBack: () -> Unit, onMessage: (String) -> Unit) {
+fun ViewerScreen(
+    account: Account,
+    file: CloudFile,
+    onBack: () -> Unit,
+    onMessage: (String) -> Unit,
+    position: String? = null,
+    onPrev: (() -> Unit)? = null,
+    onNext: (() -> Unit)? = null
+) {
     BackHandler(onBack = onBack)
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -132,6 +148,13 @@ fun ViewerScreen(account: Account, file: CloudFile, onBack: () -> Unit, onMessag
                     title = { Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar") } },
                     actions = {
+                        if (position != null) Text(position, style = MaterialTheme.typography.labelMedium)
+                        IconButton(onClick = { onPrev?.invoke() }, enabled = onPrev != null) {
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Anterior")
+                        }
+                        IconButton(onClick = { onNext?.invoke() }, enabled = onNext != null) {
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Próximo")
+                        }
                         IconButton(onClick = {
                             scope.launch {
                                 try {
@@ -326,6 +349,26 @@ private fun CachedContent(provider: CloudProvider, file: CloudFile, kind: FileKi
     }
 }
 
+/**
+ * Zoom com dois dedos para conteúdos que rolam (texto, planilha, PDF). Só reage quando há 2+ dedos,
+ * então a rolagem com um dedo continua normal.
+ */
+private fun Modifier.pinchZoom(onZoom: (Float) -> Unit): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (event.changes.size >= 2) {
+                val z = event.calculateZoom()
+                if (z != 1f) {
+                    onZoom(z)
+                    event.changes.forEach { if (it.positionChanged()) it.consume() }
+                }
+            }
+        } while (event.changes.any { it.pressed })
+    }
+}
+
 @Composable
 private fun ImageContent(f: File) {
     var scale by remember { mutableFloatStateOf(1f) }
@@ -336,6 +379,11 @@ private fun ImageContent(f: File) {
         contentScale = ContentScale.Fit,
         modifier = Modifier
             .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = {
+                    if (scale > 1f) { scale = 1f; offset = Offset.Zero } else scale = 2.5f
+                })
+            }
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
                     scale = (scale * zoom).coerceIn(1f, 6f)
@@ -383,14 +431,15 @@ private fun TextContent(f: File) {
 
 @Composable
 private fun LinesView(lines: List<String>, mono: Boolean, truncated: Boolean = false) {
+    var zoom by remember { mutableFloatStateOf(1f) }
     SelectionContainer {
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp).pinchZoom { zoom = (zoom * it).coerceIn(0.6f, 4f) }) {
             items(lines) { l ->
                 Text(
                     l,
                     fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
-                    fontSize = if (mono) 13.sp else 15.sp,
-                    lineHeight = if (mono) 18.sp else 22.sp
+                    fontSize = (if (mono) 13f else 15f).times(zoom).sp,
+                    lineHeight = (if (mono) 18f else 22f).times(zoom).sp
                 )
             }
             if (truncated) item { Text("… (arquivo grande: mostrando só o início)", color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -433,6 +482,8 @@ private fun SheetContent(f: File) {
             Text("Planilha vazia ou formato não reconhecido. Use \"Abrir em outro app\".", Modifier.padding(24.dp), textAlign = TextAlign.Center)
         }
     } else {
+        var zoom by remember { mutableFloatStateOf(1f) }
+        val cellW = (130f * zoom).dp
         Column(Modifier.fillMaxSize()) {
             Text(
                 "Primeira planilha, só os valores. Para fórmulas e formatação use \"Abrir em outro app\".",
@@ -440,21 +491,21 @@ private fun SheetContent(f: File) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(12.dp)
             )
-            Box(Modifier.weight(1f).fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            Box(Modifier.weight(1f).fillMaxWidth().pinchZoom { zoom = (zoom * it).coerceIn(0.6f, 3f) }.horizontalScroll(rememberScrollState())) {
                 LazyColumn(Modifier.fillMaxSize()) {
                     itemsIndexed(r) { i, row ->
                         Row(Modifier.then(if (i == 0) Modifier.background(MaterialTheme.colorScheme.surfaceContainer) else Modifier)) {
                             row.forEach { cell ->
                                 Text(
                                     cell,
-                                    Modifier.width(130.dp).padding(horizontal = 8.dp, vertical = 6.dp),
+                                    Modifier.width(cellW).padding(horizontal = 8.dp, vertical = 6.dp),
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
-                                    fontSize = 13.sp
+                                    fontSize = (13f * zoom).sp
                                 )
                             }
                         }
-                        HorizontalDivider(Modifier.width((130 * maxOf(1, row.size)).dp))
+                        HorizontalDivider(Modifier.width(cellW * maxOf(1, row.size)))
                     }
                 }
             }
@@ -475,9 +526,16 @@ private fun PdfContent(f: File) {
     }
     DisposableEffect(renderer) { onDispose { runCatching { renderer.close() } } }
     val mutex = remember(renderer) { Mutex() }
+    var zoom by remember { mutableFloatStateOf(1f) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val widthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // As páginas são desenhadas com um pouco mais de resolução para o zoom não ficar borrado.
+        val widthPx = (with(LocalDensity.current) { maxWidth.roundToPx() } * 1.5f).toInt().coerceAtMost(1800)
+        Box(
+            Modifier.fillMaxSize()
+                .pinchZoom { zoom = (zoom * it).coerceIn(1f, 3f) }
+                .horizontalScroll(rememberScrollState())
+        ) {
+        LazyColumn(Modifier.width(maxWidth * zoom).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(renderer.pageCount) { index ->
                 val bmp by produceState<Bitmap?>(null, index, widthPx) {
                     value = withContext(Dispatchers.Default) {
@@ -501,6 +559,7 @@ private fun PdfContent(f: File) {
                     Box(Modifier.fillMaxWidth().aspectRatio(0.707f), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 }
             }
+        }
         }
     }
 }
