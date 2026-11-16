@@ -175,11 +175,17 @@ class MegaApi(private val http: OkHttpClient, var sid: String? = null) {
         while (result == null) {
             val url = "https://g.api.mega.co.nz/cs?id=${seq++}" + (sid?.let { "&sid=$it" } ?: "")
             val req = Request.Builder().url(url)
-                .post(JSONArray().put(cmd).toString().toRequestBody("text/plain".toMediaType()))
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) Nuvem/1.0")
+                .post(JSONArray().put(cmd).toString().toRequestBody("text/plain;charset=UTF-8".toMediaType()))
                 .build()
-            val text = http.newCall(req).execute().use { it.body?.string().orEmpty().trim() }
-            val r: Any = if (text.startsWith("[")) JSONArray(text).get(0)
-            else (text.toIntOrNull() ?: throw IOException("Resposta inesperada da Mega."))
+            var code = 0
+            val text = http.newCall(req).execute().use { code = it.code; it.body?.string().orEmpty().trim() }
+            val r: Any = when {
+                text.startsWith("[") -> JSONArray(text).get(0)
+                text.startsWith("{") -> JSONObject(text)
+                text.toIntOrNull() != null -> text.toInt()
+                else -> throw IOException("Resposta inesperada da Mega (HTTP $code): " + text.take(120).ifBlank { "vazia" })
+            }
             if (r is Int && r < 0) {
                 if ((r == -3 || r == -18) && attempt < 6) {
                     delay(500L shl attempt)
