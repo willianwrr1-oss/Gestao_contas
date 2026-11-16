@@ -25,7 +25,8 @@ data class CloudFile(
     val isFolder: Boolean,
     val size: Long = -1,
     val modified: Long = 0,
-    val mime: String = ""
+    val mime: String = "",
+    val thumb: String? = null
 )
 
 data class Quota(val used: Long, val total: Long) {

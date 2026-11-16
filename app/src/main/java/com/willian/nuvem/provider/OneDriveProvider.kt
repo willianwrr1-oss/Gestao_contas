@@ -45,7 +45,8 @@ class OneDriveProvider(override val account: Account, private val auth: OAuthSes
         return CloudFile(
             o.getString("id"), o.optString("name"), isFolder,
             if (isFolder) -1L else o.optLong("size", -1L), modified,
-            o.optJSONObject("file")?.optString("mimeType").orEmpty()
+            o.optJSONObject("file")?.optString("mimeType").orEmpty(),
+            o.optJSONArray("thumbnails")?.optJSONObject(0)?.optJSONObject("large")?.optString("url")?.ifEmpty { null }
         )
     }
 
@@ -69,7 +70,11 @@ class OneDriveProvider(override val account: Account, private val auth: OAuthSes
 
     override suspend fun list(folderId: String?): List<CloudFile> {
         val base = if (folderId == null) "$api/me/drive/root/children" else "$api/me/drive/items/$folderId/children"
-        return pages("$base?\$top=200&$select")
+        return try {
+            pages("$base?\$top=200&$select&\$expand=thumbnails(\$select=large)")
+        } catch (e: IOException) {
+            pages("$base?\$top=200&$select") // sem miniaturas, se a API recusar
+        }
     }
 
     override suspend fun search(query: String): List<CloudFile> {

@@ -16,7 +16,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material3.HorizontalDivider
+import com.willian.nuvem.data.Account
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -150,13 +157,35 @@ fun BrowserScreen(
                         IconButton(onClick = { ctl.clearSearch() }) { Icon(Icons.Filled.Close, "Limpar") }
                     }
                     Box {
-                        IconButton(onClick = { sortMenu = true }) { Icon(Icons.Filled.Sort, "Ordenar") }
+                        IconButton(onClick = { sortMenu = true }) {
+                            Icon(if (ctl.viewMode == ViewMode.LIST) Icons.Filled.Sort else Icons.Filled.GridView, "Exibição")
+                        }
                         DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                            Text(
+                                "Ordenar por",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            )
                             SortBy.values().forEach { s ->
                                 DropdownMenuItem(
                                     text = { Text(s.label) },
-                                    onClick = { ctl.sort = s; sortMenu = false },
+                                    onClick = { ctl.setSort(s); sortMenu = false },
                                     trailingIcon = { if (ctl.sort == s) Icon(Icons.Filled.Check, null) }
+                                )
+                            }
+                            HorizontalDivider()
+                            Text(
+                                "Visualização",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            )
+                            ViewMode.values().forEach { v ->
+                                DropdownMenuItem(
+                                    text = { Text(v.label) },
+                                    onClick = { ctl.setView(v); sortMenu = false },
+                                    trailingIcon = { if (ctl.viewMode == v) Icon(Icons.Filled.Check, null) }
                                 )
                             }
                         }
@@ -220,16 +249,30 @@ fun BrowserScreen(
                         Modifier.align(Alignment.Center),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    else -> LazyColumn(Modifier.fillMaxSize()) {
+                    ctl.viewMode == ViewMode.LIST -> LazyColumn(Modifier.fillMaxSize()) {
                         items(list, key = { it.id }) { f ->
                             FileRow(
-                                f,
+                                ctl.account, f,
                                 onClick = { if (f.isFolder) ctl.enter(f) else onOpen(f) },
                                 onDownload = { ctl.download(f) },
                                 onTrash = { toTrash = f }
                             )
                         }
                         item { Spacer(Modifier.height(88.dp)) }
+                    }
+                    else -> LazyVerticalGrid(
+                        columns = GridCells.Adaptive(ctl.viewMode.cell.dp),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(8.dp, 4.dp, 8.dp, 96.dp)
+                    ) {
+                        gridItems(list, key = { it.id }) { f ->
+                            GridItem(
+                                ctl.account, f, ctl.viewMode,
+                                onClick = { if (f.isFolder) ctl.enter(f) else onOpen(f) },
+                                onDownload = { ctl.download(f) },
+                                onTrash = { toTrash = f }
+                            )
+                        }
                     }
                 }
                 if (ctl.loading && list.isNotEmpty()) {
@@ -275,12 +318,12 @@ fun BrowserScreen(
 }
 
 @Composable
-private fun FileRow(f: CloudFile, onClick: () -> Unit, onDownload: () -> Unit, onTrash: () -> Unit) {
+private fun FileRow(account: Account, f: CloudFile, onClick: () -> Unit, onDownload: () -> Unit, onTrash: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val kind = FileTypes.kind(f)
     ListItem(
         modifier = Modifier.clickable(onClick = onClick),
-        leadingContent = { Icon(kindIcon(kind), null, tint = kindColor(kind), modifier = Modifier.size(32.dp)) },
+        leadingContent = { Thumb(account, f, 26.dp, 128, Modifier.size(44.dp)) },
         headlineContent = { Text(f.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
             val s = listOf(if (f.isFolder) "" else fmtSize(f.size), fmtDate(f.modified)).filter { it.isNotEmpty() }.joinToString("  •  ")

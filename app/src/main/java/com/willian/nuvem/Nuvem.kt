@@ -3,6 +3,9 @@ package com.willian.nuvem
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.decode.VideoFrameDecoder
 import com.willian.nuvem.data.Account
 import com.willian.nuvem.data.AccountStore
 import com.willian.nuvem.data.LOCAL_ACCOUNT
@@ -20,11 +23,17 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class NuvemApp : Application() {
+class NuvemApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         Nuvem.init(this)
     }
+
+    /** Carregador de imagens das miniaturas (inclui quadro de vídeos do celular). */
+    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
+        .components { add(VideoFrameDecoder.Factory()) }
+        .crossfade(true)
+        .build()
 }
 
 /** Objetos compartilhados pelo app, pela tela e pelo serviço de reprodução (mesmo processo). */

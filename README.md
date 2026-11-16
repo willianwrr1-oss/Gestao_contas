@@ -2,7 +2,7 @@
 
 Reúne em um só app suas contas do **Google Drive**, **OneDrive** e **Mega** (várias contas do mesmo serviço, se quiser) e os arquivos do próprio celular.
 
-- Navegar por pastas, pesquisar, enviar, baixar, mover para a lixeira, restaurar e esvaziar a lixeira
+- Navegar por pastas (lista ou miniaturas em 3 tamanhos), ordenar por nome A–Z/Z–A, data ou tamanho, pesquisar, enviar, baixar, mover para a lixeira, restaurar e esvaziar a lixeira
 - Espaço usado e livre de cada conta
 - Visualizar dentro do app: imagens, PDF, texto, `.docx`, `.xlsx`, `.pptx` (texto extraído), músicas e vídeos
 - Música e vídeo guardam onde você parou e perguntam "Continuar de onde parou?" ao reabrir
@@ -52,6 +52,7 @@ Depois de editar `oauth.properties` no GitHub, o Actions gera um APK novo. Insta
 
 ## Limites conhecidos
 
+- **Miniaturas**: aparecem para imagens e vídeos do celular, e para imagens/vídeos do Google Drive e OneDrive. Na Mega a miniatura é cifrada e por enquanto só aparece o ícone do tipo.
 - **OneDrive**: a Microsoft não deixa apps verem a lixeira do OneDrive pessoal. Excluir envia o arquivo à lixeira dele; para restaurar ou esvaziar, use o site.
 - **Mega**: a Mega não publica o SDK Android para uso aberto, então o app fala o protocolo dela diretamente. Funciona sem chave de desenvolvedor, mas pode precisar de ajuste se a Mega mudar algo. Restaurar da lixeira devolve o item à raiz.
 - **Office**: `.docx`, `.xlsx` e `.pptx` mostram só o texto e os valores. `.doc`, `.xls`, `.ppt` e o layout fiel abrem por **Abrir em outro app**.

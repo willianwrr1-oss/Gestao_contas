@@ -47,7 +47,7 @@ class GoogleDriveProvider(override val account: Account, private val auth: OAuth
         val modified = o.optString("modifiedTime").takeIf { it.isNotEmpty() }
             ?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() } ?: 0L
         val size = if (o.has("size")) o.getString("size").toLongOrNull() ?: -1L else -1L
-        return CloudFile(o.getString("id"), name, isFolder, size, modified, mime)
+        return CloudFile(o.getString("id"), name, isFolder, size, modified, mime, o.optString("thumbnailLink").ifEmpty { null })
     }
 
     private suspend fun queryFiles(q: String): List<CloudFile> {
@@ -56,7 +56,7 @@ class GoogleDriveProvider(override val account: Account, private val auth: OAuth
         do {
             val url = "$api/files".toHttpUrl().newBuilder()
                 .addQueryParameter("q", q)
-                .addQueryParameter("fields", "nextPageToken,files(id,name,mimeType,size,modifiedTime)")
+                .addQueryParameter("fields", "nextPageToken,files(id,name,mimeType,size,modifiedTime,thumbnailLink)")
                 .addQueryParameter("pageSize", "1000")
                 .apply { page?.let { addQueryParameter("pageToken", it) } }
                 .build()

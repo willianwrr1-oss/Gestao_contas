@@ -36,7 +36,21 @@ sealed interface Screen {
     data class Viewer(val account: Account, val file: CloudFile) : Screen
 }
 
-enum class SortBy(val label: String) { NAME("Nome"), DATE("Data (mais recente)"), SIZE("Tamanho (maior)") }
+enum class SortBy(val label: String) {
+    NAME_ASC("Nome (A–Z)"),
+    NAME_DESC("Nome (Z–A)"),
+    DATE_NEW("Data (mais recente)"),
+    DATE_OLD("Data (mais antiga)"),
+    SIZE_BIG("Tamanho (maior)")
+}
+
+/** Lista simples ou grade de miniaturas em 3 tamanhos. */
+enum class ViewMode(val label: String, val cell: Int, val px: Int, val icon: Int) {
+    LIST("Lista", 0, 96, 0),
+    GRID_S("Miniaturas pequenas", 96, 256, 40),
+    GRID_M("Miniaturas médias", 140, 400, 56),
+    GRID_L("Miniaturas grandes", 200, 640, 80)
+}
 
 data class Transfer(val label: String, val progress: Float?)
 
@@ -51,7 +65,14 @@ class BrowserController(val account: Account, private val scope: CoroutineScope)
     var error by mutableStateOf<String?>(null)
     var query by mutableStateOf("")
     var searchResults by mutableStateOf<List<CloudFile>?>(null)
-    var sort by mutableStateOf(SortBy.NAME)
+    var sort by mutableStateOf(
+        runCatching { SortBy.valueOf(Nuvem.prefs.getString("sort", "")!!) }.getOrDefault(SortBy.NAME_ASC)
+    )
+        private set
+    var viewMode by mutableStateOf(
+        runCatching { ViewMode.valueOf(Nuvem.prefs.getString("view", "")!!) }.getOrDefault(ViewMode.LIST)
+    )
+        private set
     var transfer by mutableStateOf<Transfer?>(null)
     var quota by mutableStateOf<Quota?>(null)
     var onMessage: (String) -> Unit = {}
@@ -61,14 +82,26 @@ class BrowserController(val account: Account, private val scope: CoroutineScope)
 
     val currentId: String? get() = stack.lastOrNull()?.id
 
+    fun setSort(s: SortBy) {
+        sort = s
+        Nuvem.prefs.edit().putString("sort", s.name).apply()
+    }
+
+    fun setView(v: ViewMode) {
+        viewMode = v
+        Nuvem.prefs.edit().putString("view", v.name).apply()
+    }
+
     val visible: List<CloudFile>
         get() {
             val base = searchResults
                 ?: if (query.isBlank()) items else items.filter { it.name.contains(query.trim(), ignoreCase = true) }
             val cmp: Comparator<CloudFile> = when (sort) {
-                SortBy.NAME -> compareBy<CloudFile> { it.name.lowercase() }
-                SortBy.DATE -> compareByDescending<CloudFile> { it.modified }
-                SortBy.SIZE -> compareByDescending<CloudFile> { it.size }
+                SortBy.NAME_ASC -> compareBy<CloudFile> { it.name.lowercase() }
+                SortBy.NAME_DESC -> compareByDescending<CloudFile> { it.name.lowercase() }
+                SortBy.DATE_NEW -> compareByDescending<CloudFile> { it.modified }
+                SortBy.DATE_OLD -> compareBy<CloudFile> { it.modified }
+                SortBy.SIZE_BIG -> compareByDescending<CloudFile> { it.size }
             }
             return base.sortedWith(compareByDescending<CloudFile> { it.isFolder }.then(cmp))
         }
