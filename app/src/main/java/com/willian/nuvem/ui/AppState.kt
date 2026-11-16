@@ -82,12 +82,12 @@ class BrowserController(val account: Account, private val scope: CoroutineScope)
 
     val currentId: String? get() = stack.lastOrNull()?.id
 
-    fun setSort(s: SortBy) {
+    fun changeSort(s: SortBy) {
         sort = s
         Nuvem.prefs.edit().putString("sort", s.name).apply()
     }
 
-    fun setView(v: ViewMode) {
+    fun changeView(v: ViewMode) {
         viewMode = v
         Nuvem.prefs.edit().putString("view", v.name).apply()
     }

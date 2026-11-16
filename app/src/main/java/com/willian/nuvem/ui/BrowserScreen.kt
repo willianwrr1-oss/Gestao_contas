@@ -170,7 +170,7 @@ fun BrowserScreen(
                             SortBy.values().forEach { s ->
                                 DropdownMenuItem(
                                     text = { Text(s.label) },
-                                    onClick = { ctl.setSort(s); sortMenu = false },
+                                    onClick = { ctl.changeSort(s); sortMenu = false },
                                     trailingIcon = { if (ctl.sort == s) Icon(Icons.Filled.Check, null) }
                                 )
                             }
@@ -184,7 +184,7 @@ fun BrowserScreen(
                             ViewMode.values().forEach { v ->
                                 DropdownMenuItem(
                                     text = { Text(v.label) },
-                                    onClick = { ctl.setView(v); sortMenu = false },
+                                    onClick = { ctl.changeView(v); sortMenu = false },
                                     trailingIcon = { if (ctl.viewMode == v) Icon(Icons.Filled.Check, null) }
                                 )
                             }
