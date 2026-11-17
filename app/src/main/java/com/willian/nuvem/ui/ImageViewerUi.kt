@@ -94,7 +94,7 @@ private fun readExif(f: File, name: String): ExifResult {
 
     val cam = listOfNotNull(t(ExifInterface.TAG_MAKE), t(ExifInterface.TAG_MODEL)).joinToString(" ")
     if (cam.isNotEmpty()) rows += "Câmera" to cam
-    val lens = t(ExifInterface.TAG_LENS_MODEL)
+    val lens = t("LensModel")
     if (lens != null) rows += "Lente" to lens
     val date = t(ExifInterface.TAG_DATETIME_ORIGINAL) ?: t(ExifInterface.TAG_DATETIME)
     if (date != null) rows += "Data da foto" to date
@@ -103,7 +103,7 @@ private fun readExif(f: File, name: String): ExifResult {
     if (exp > 0) rows += "Velocidade" to (if (exp < 1.0) "1/${(1.0 / exp).roundToInt()} s" else String.format(br, "%.1f s", exp))
     val fn = e.getAttributeDouble(ExifInterface.TAG_F_NUMBER, 0.0)
     if (fn > 0) rows += "Abertura" to String.format(br, "f/%.1f", fn)
-    val iso = t(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY)
+    val iso = t("PhotographicSensitivity") ?: t("ISOSpeedRatings") ?: t(ExifInterface.TAG_ISO)
     if (iso != null) rows += "ISO" to iso
     val fl = e.getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH, 0.0)
     if (fl > 0) {
