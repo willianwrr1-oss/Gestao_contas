@@ -108,6 +108,7 @@ import com.willian.nuvem.player.PlaybackService
 import com.willian.nuvem.player.mediaUri
 import com.willian.nuvem.provider.CloudProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -131,7 +132,9 @@ fun ViewerScreen(
     onPrev: (() -> Unit)? = null,
     onNext: (() -> Unit)? = null
 ) {
-    BackHandler(onBack = onBack)
+    val back = { SlideshowState.on = false; onBack() }
+    BackHandler(onBack = back)
+    val inPip = rememberInPip()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val provider = remember(account.id) { Nuvem.provider(account) }
@@ -141,12 +144,12 @@ fun ViewerScreen(
     ImmersiveEffect(immersive)
 
     Scaffold(
-        containerColor = if (kind == FileKind.VIDEO) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.background,
+        containerColor = if (kind == FileKind.VIDEO || kind == FileKind.IMAGE) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.background,
         topBar = {
-            if (!immersive) {
+            if (!immersive && !inPip) {
                 TopAppBar(
                     title = { Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar") } },
+                    navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar") } },
                     actions = {
                         if (position != null) Text(position, style = MaterialTheme.typography.labelMedium)
                         IconButton(onClick = { onPrev?.invoke() }, enabled = onPrev != null) {
@@ -181,9 +184,9 @@ fun ViewerScreen(
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (kind) {
-                FileKind.AUDIO, FileKind.VIDEO -> MediaContent(account, file, kind)
+                FileKind.AUDIO, FileKind.VIDEO -> MediaContent(account, file, kind, onPrev, onNext, immersive, inPip, back)
                 FileKind.IMAGE, FileKind.PDF, FileKind.TEXT, FileKind.DOCX, FileKind.XLSX, FileKind.PPTX ->
-                    CachedContent(provider, file, kind)
+                    CachedContent(provider, file, kind, onPrev, onNext)
                 else -> Column(
                     Modifier.align(Alignment.Center).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -228,12 +231,22 @@ private fun ImmersiveEffect(on: Boolean) {
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun MediaContent(account: Account, file: CloudFile, kind: FileKind) {
+private fun MediaContent(
+    account: Account,
+    file: CloudFile,
+    kind: FileKind,
+    onPrev: (() -> Unit)?,
+    onNext: (() -> Unit)?,
+    immersive: Boolean,
+    inPip: Boolean,
+    onBack: () -> Unit
+) {
     val ctx = LocalContext.current
     val mediaId = "${account.id}|${file.id}"
     var controller by remember { mutableStateOf<MediaController?>(null) }
     var askPos by remember { mutableStateOf<Long?>(null) }
     var started by remember { mutableStateOf(false) }
+    var playCalled by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val future = MediaController.Builder(ctx, SessionToken(ctx, ComponentName(ctx, PlaybackService::class.java))).buildAsync()
@@ -252,6 +265,7 @@ private fun MediaContent(account: Account, file: CloudFile, kind: FileKind) {
             .setUri(mediaUri(account, file))
             .setMediaMetadata(MediaMetadata.Builder().setTitle(file.name).build())
             .build()
+        playCalled = true
         c.setMediaItem(item, startMs)
         c.prepare()
         c.play()
@@ -263,7 +277,10 @@ private fun MediaContent(account: Account, file: CloudFile, kind: FileKind) {
         started = true
         val alreadyLoaded = c.currentMediaItem?.mediaId == mediaId &&
             c.playbackState != Player.STATE_IDLE && c.playbackState != Player.STATE_ENDED
-        if (alreadyLoaded) return@LaunchedEffect
+        if (alreadyLoaded) {
+            playCalled = true
+            return@LaunchedEffect
+        }
         val saved = Nuvem.positions.get(mediaId)
         if (saved != null && saved.first > 5000 && (saved.second <= 0 || saved.first < saved.second - 5000)) {
             askPos = saved.first
@@ -286,41 +303,25 @@ private fun MediaContent(account: Account, file: CloudFile, kind: FileKind) {
         )
     }
 
-    Column(Modifier.fillMaxSize()) {
-        if (kind == FileKind.AUDIO) {
-            Column(
-                Modifier.weight(1f).fillMaxWidth().padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(Icons.Filled.MusicNote, null, Modifier.size(120.dp), tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(16.dp))
-                Text(file.name, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+    if (kind == FileKind.VIDEO) {
+        VideoPlayerUi(controller, file.name, file.size, immersive, inPip, onBack)
+    } else {
+        val info = rememberPlaybackInfo(controller)
+        // Ao terminar uma música, passa para a próxima da pasta (se houver).
+        LaunchedEffect(info.ended, playCalled, info.mediaId) {
+            if (info.ended && playCalled && info.mediaId == mediaId && !info.repeatOne) {
+                delay(800)
+                if (info.ended && onNext != null) onNext()
             }
         }
-        AndroidView(
-            factory = { c ->
-                PlayerView(c).apply {
-                    setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    if (kind == FileKind.VIDEO) keepScreenOn = true
-                    if (kind == FileKind.AUDIO) {
-                        controllerShowTimeoutMs = 0
-                        controllerHideOnTouch = false
-                        showController()
-                    }
-                }
-            },
-            update = { it.player = controller },
-            modifier = if (kind == FileKind.AUDIO) Modifier.fillMaxWidth().height(200.dp) else Modifier.weight(1f).fillMaxWidth()
-        )
+        AudioPlayerUi(controller, file.name, file.size, info, onPrev, onNext)
     }
 }
 
 // ---- imagem, PDF, texto e Office -----------------------------------------------------------------
 
 @Composable
-private fun CachedContent(provider: CloudProvider, file: CloudFile, kind: FileKind) {
+private fun CachedContent(provider: CloudProvider, file: CloudFile, kind: FileKind, onPrev: (() -> Unit)?, onNext: (() -> Unit)?) {
     var progress by remember { mutableStateOf<Float?>(null) }
     val state by produceState<LoadState>(LoadState.Loading, file.id) {
         value = try {
@@ -338,7 +339,7 @@ private fun CachedContent(provider: CloudProvider, file: CloudFile, kind: FileKi
             Text(s.msg, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
         }
         is LoadState.Ready -> when (kind) {
-            FileKind.IMAGE -> ImageContent(s.file)
+            FileKind.IMAGE -> ImageViewerUi(s.file, file.name, onPrev, onNext)
             FileKind.PDF -> PdfContent(s.file)
             FileKind.TEXT -> TextContent(s.file)
             FileKind.DOCX -> OfficeLines(s.file, FileKind.DOCX)

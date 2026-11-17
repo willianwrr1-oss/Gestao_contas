@@ -23,6 +23,32 @@ class PlaybackService : MediaSessionService() {
     private lateinit var player: ExoPlayer
     private val handler = Handler(Looper.getMainLooper())
 
+    /** Quando o temporizador de dormir termina (0 = desligado). */
+    @Volatile
+    var sleepEndsAt: Long = 0L
+        private set
+
+    private val sleepRunnable = Runnable {
+        player.pause()
+        sleepEndsAt = 0L
+    }
+
+    /** Pausa a reprodução depois de [minutes] minutos; 0 cancela. */
+    fun setSleepTimer(minutes: Int) {
+        handler.removeCallbacks(sleepRunnable)
+        if (minutes <= 0) {
+            sleepEndsAt = 0L
+            return
+        }
+        sleepEndsAt = System.currentTimeMillis() + minutes * 60_000L
+        handler.postDelayed(sleepRunnable, minutes * 60_000L)
+    }
+
+    companion object {
+        @Volatile
+        var current: PlaybackService? = null
+    }
+
     private val ticker = object : Runnable {
         override fun run() {
             savePosition()
@@ -32,6 +58,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        current = this
         val dataSource = DefaultDataSource.Factory(this, ProviderDataSource.Factory())
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
@@ -70,6 +97,8 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         handler.removeCallbacks(ticker)
+        handler.removeCallbacks(sleepRunnable)
+        if (current === this) current = null
         savePosition()
         session?.release()
         session = null

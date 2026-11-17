@@ -110,6 +110,24 @@ class BrowserController(val account: Account, private val scope: CoroutineScope)
     val listState = androidx.compose.foundation.lazy.LazyListState()
     val gridState = androidx.compose.foundation.lazy.grid.LazyGridState()
 
+    private class ScrollPos(val li: Int, val lo: Int, val gi: Int, val go: Int)
+
+    /** Posição de rolagem de cada pasta da trilha, para voltar exatamente onde estava. */
+    private val savedPos = mutableMapOf<Int, ScrollPos>()
+    private var pendingRestore: ScrollPos? = null
+
+    private fun savePos() {
+        savedPos[stack.size] = ScrollPos(
+            listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset,
+            gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset
+        )
+    }
+
+    private fun prepareRestore() {
+        savedPos.keys.removeAll { it > stack.size }
+        pendingRestore = savedPos[stack.size]
+    }
+
     private fun toTop() {
         scope.launch {
             listState.scrollToItem(0)
@@ -124,6 +142,11 @@ class BrowserController(val account: Account, private val scope: CoroutineScope)
             error = null
             try {
                 items = provider.list(currentId)
+                pendingRestore?.let { p ->
+                    pendingRestore = null
+                    listState.scrollToItem(p.li, p.lo)
+                    gridState.scrollToItem(p.gi, p.go)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -139,6 +162,8 @@ class BrowserController(val account: Account, private val scope: CoroutineScope)
 
     fun enter(f: CloudFile) {
         clearSearch()
+        savePos()
+        pendingRestore = null
         stack = stack + f
         toTop()
         load()
@@ -147,7 +172,8 @@ class BrowserController(val account: Account, private val scope: CoroutineScope)
     fun goTo(depth: Int) {
         clearSearch()
         stack = stack.take(depth)
-        toTop()
+        prepareRestore()
+        if (pendingRestore == null) toTop()
         load()
     }
 
@@ -159,7 +185,8 @@ class BrowserController(val account: Account, private val scope: CoroutineScope)
         }
         if (stack.isEmpty()) return false
         stack = stack.dropLast(1)
-        toTop()
+        prepareRestore()
+        if (pendingRestore == null) toTop()
         load()
         return true
     }
