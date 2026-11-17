@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Surface
 import androidx.compose.ui.geometry.Offset
@@ -169,6 +170,7 @@ fun HomeScreen(vm: AppViewModel, onAdd: (Provider) -> Unit) {
                             )
                             labels[LOCAL_ACCOUNT.id]?.let { LabelTag(it) }
                         }
+                        IconButton(onClick = { vm.push(Screen.Trash(LOCAL_ACCOUNT)) }) { Icon(Icons.Filled.Delete, "Lixeira") }
                         IconButton(onClick = { editing = LOCAL_ACCOUNT }) { Icon(Icons.Filled.Edit, "Etiqueta") }
                     }
                 }
@@ -196,6 +198,7 @@ fun HomeScreen(vm: AppViewModel, onAdd: (Provider) -> Unit) {
                                 Modifier.weight(1f).fillMaxHeight(),
                                 onOpen = { vm.push(Screen.Browser(a)) },
                                 onEdit = { editing = a },
+                                onTrash = { vm.push(Screen.Trash(a)) },
                                 onRemove = { removing = a }
                             )
                         }
@@ -314,7 +317,7 @@ private fun LabelTag(text: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AccountTile(a: Account, label: String?, modifier: Modifier, onOpen: () -> Unit, onEdit: () -> Unit, onRemove: () -> Unit) {
+private fun AccountTile(a: Account, label: String?, modifier: Modifier, onOpen: () -> Unit, onEdit: () -> Unit, onTrash: () -> Unit, onRemove: () -> Unit) {
     val quota by produceState<Quota?>(null, a.id) { value = runCatching { Nuvem.provider(a).quota() }.getOrNull() }
     var menu by remember { mutableStateOf(false) }
     Card(
@@ -350,6 +353,7 @@ private fun AccountTile(a: Account, label: String?, modifier: Modifier, onOpen: 
                 IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Filled.MoreVert, "Opções") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Etiqueta") }, onClick = { menu = false; onEdit() })
+                    DropdownMenuItem(text = { Text("Lixeira") }, onClick = { menu = false; onTrash() })
                     DropdownMenuItem(text = { Text("Remover conta") }, onClick = { menu = false; onRemove() })
                 }
             }
