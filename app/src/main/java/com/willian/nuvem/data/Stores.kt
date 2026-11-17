@@ -71,6 +71,20 @@ class AccountStore(ctx: Context) {
         state.value = list
     }
 
+    private val labelState = MutableStateFlow(loadLabels())
+
+    /** Etiqueta (anotação livre) de cada conta, por id. */
+    val labels: StateFlow<Map<String, String>> = labelState
+
+    private fun loadLabels(): Map<String, String> =
+        sp.all.filterKeys { it.startsWith("l_") }.mapKeys { it.key.removePrefix("l_") }.mapValues { it.value.toString() }
+
+    fun setLabel(id: String, text: String) {
+        val t = text.trim()
+        sp.edit().apply { if (t.isEmpty()) remove("l_$id") else putString("l_$id", t) }.apply()
+        labelState.value = if (t.isEmpty()) labelState.value - id else labelState.value + (id to t)
+    }
+
     fun find(id: String): Account? = state.value.firstOrNull { it.id == id }
 
     fun upsert(a: Account, secret: String?) {
@@ -80,7 +94,8 @@ class AccountStore(ctx: Context) {
     }
 
     fun remove(id: String) {
-        sp.edit().remove("s_$id").apply()
+        sp.edit().remove("s_$id").remove("l_$id").apply()
+        labelState.value = labelState.value - id
         save(state.value.filter { it.id != id })
     }
 

@@ -4,7 +4,24 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.provider.Settings
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Surface
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -65,6 +82,7 @@ import com.willian.nuvem.data.Account
 import com.willian.nuvem.data.LOCAL_ACCOUNT
 import com.willian.nuvem.data.Provider
 import com.willian.nuvem.data.Quota
+import com.willian.nuvem.data.fmtSize
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,6 +92,8 @@ fun HomeScreen(vm: AppViewModel, onAdd: (Provider) -> Unit) {
     var showAdd by remember { mutableStateOf(false) }
     var showMega by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<Account?>(null) }
+    var editing by remember { mutableStateOf<Account?>(null) }
+    val labels by Nuvem.accounts.labels.collectAsStateWithLifecycle()
     var granted by remember { mutableStateOf(Environment.isExternalStorageManager()) }
 
     val owner = LocalLifecycleOwner.current
@@ -146,7 +166,9 @@ fun HomeScreen(vm: AppViewModel, onAdd: (Provider) -> Unit) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            labels[LOCAL_ACCOUNT.id]?.let { LabelTag(it) }
                         }
+                        IconButton(onClick = { editing = LOCAL_ACCOUNT }) { Icon(Icons.Filled.Edit, "Etiqueta") }
                     }
                 }
             }
@@ -162,7 +184,23 @@ fun HomeScreen(vm: AppViewModel, onAdd: (Provider) -> Unit) {
                         modifier = Modifier.padding(top = 10.dp, start = 4.dp)
                     )
                 }
-                items(group, key = { it.id }) { a -> AccountCard(a, onOpen = { vm.push(Screen.Browser(a)) }, onRemove = { removing = a }) }
+                items(group.chunked(2), key = { "g_" + it.first().id }) { pair ->
+                    Row(
+                        Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        for (a in pair) {
+                            AccountTile(
+                                a, labels[a.id],
+                                Modifier.weight(1f).fillMaxHeight(),
+                                onOpen = { vm.push(Screen.Browser(a)) },
+                                onEdit = { editing = a },
+                                onRemove = { removing = a }
+                            )
+                        }
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
             }
 
             if (accounts.isEmpty()) {
@@ -206,6 +244,15 @@ fun HomeScreen(vm: AppViewModel, onAdd: (Provider) -> Unit) {
         onLogin = { e, p, c -> showMega = false; vm.addMega(e, p, c) }
     )
 
+    editing?.let { a ->
+        LabelDialog(
+            title = a.email.ifEmpty { a.name },
+            initial = labels[a.id].orEmpty(),
+            onDismiss = { editing = null },
+            onSave = { Nuvem.accounts.setLabel(a.id, it); editing = null }
+        )
+    }
+
     removing?.let { a ->
         AlertDialog(
             onDismissRequest = { removing = null },
@@ -217,35 +264,121 @@ fun HomeScreen(vm: AppViewModel, onAdd: (Provider) -> Unit) {
     }
 }
 
+@Composable
+private fun UsageRing(q: Quota?, diameter: Dp = 72.dp) {
+    val frac = q?.takeIf { it.total > 0 }?.fraction ?: 0f
+    val color = when {
+        frac >= 0.9f -> MaterialTheme.colorScheme.error
+        frac >= 0.8f -> Color(0xFFB26A00)
+        else -> MaterialTheme.colorScheme.primary
+    }
+    val track = MaterialTheme.colorScheme.outlineVariant
+    Box(Modifier.size(diameter), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val w = 7.dp.toPx()
+            val arc = Size(this.size.width - w, this.size.height - w)
+            val tl = Offset(w / 2, w / 2)
+            drawArc(track, 0f, 360f, false, topLeft = tl, size = arc, style = Stroke(w))
+            if (frac > 0f) drawArc(color, -90f, 360f * frac, false, topLeft = tl, size = arc, style = Stroke(w, cap = StrokeCap.Round))
+        }
+        Text(
+            when {
+                q == null -> "…"
+                q.total > 0 -> "${(frac * 100).roundToInt()}%"
+                else -> fmtSize(q.used)
+            },
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun LabelTag(text: String) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.padding(top = 6.dp)
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AccountCard(a: Account, onOpen: () -> Unit, onRemove: () -> Unit) {
+private fun AccountTile(a: Account, label: String?, modifier: Modifier, onOpen: () -> Unit, onEdit: () -> Unit, onRemove: () -> Unit) {
     val quota by produceState<Quota?>(null, a.id) { value = runCatching { Nuvem.provider(a).quota() }.getOrNull() }
     var menu by remember { mutableStateOf(false) }
-    Card(onClick = onOpen, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-        Row(Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconBadge(providerIcon(a.provider), providerColor(a.provider))
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
+    Card(
+        onClick = onOpen,
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+    ) {
+        Box(Modifier.fillMaxWidth()) {
+            Column(
+                Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 14.dp, bottom = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                UsageRing(quota)
+                Spacer(Modifier.height(8.dp))
                 Text(
-                    a.email.ifEmpty { a.name },
-                    style = MaterialTheme.typography.titleMedium,
+                    a.email.ifEmpty { a.name }.substringBefore("@"),
+                    style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
                 )
-                if (a.name.isNotEmpty() && a.name != a.email && a.email.isNotEmpty()) {
-                    Text(a.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val q = quota
+                if (q != null && q.total > 0) {
+                    Text(
+                        "${fmtSize((q.total - q.used).coerceAtLeast(0))} livres",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                QuotaLine(quota)
+                if (!label.isNullOrBlank()) LabelTag(label)
             }
-            androidx.compose.foundation.layout.Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Opções") }
+            Box(Modifier.align(Alignment.TopEnd)) {
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Filled.MoreVert, "Opções") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Etiqueta") }, onClick = { menu = false; onEdit() })
                     DropdownMenuItem(text = { Text("Remover conta") }, onClick = { menu = false; onRemove() })
                 }
             }
         }
     }
+}
+
+@Composable
+private fun LabelDialog(title: String, initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Etiqueta") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { if (it.length <= 80) text = it },
+                    label = { Text("Anotação") },
+                    placeholder = { Text("Ex.: fotos da família") },
+                    maxLines = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text("Deixe em branco para apagar.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(text) }) { Text("Salvar") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
 }
 
 @Composable
